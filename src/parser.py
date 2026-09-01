@@ -1,63 +1,48 @@
-from path import Path
-from pydantic import BaseModel, Field, field_validator
-from enum import Enum
-from typing import Optional, Any, Tuple, Dict, List
+from typing import Set, Tuple
+from pydantic import ValidationError
+from src.exceptions import MapParsingError
+from src.models import Zone, Graph, Connection
+from src.parser_utils import MetadataParser, RawMetadata
 
-class ZoneType(str, Enum):
-    NORMAL = "normal"
-    BLOCKED = "blocked"
-    RESTRICTED = "restricted"
-    PRIORITY = "priority"
+class MapParser:
+	def __init(self, filepath: str) -> None:
+		self.filepath = filepath
+		self.graph = Graph()
+		self._seen_connections: Set[Tuple[str, str]] = set()
 
+	def parse(self) -> Graph:
+		try:
+			with open(self.filepath, "r") as file:
+				for line_num, line in enumerate(file, start=1):
+					self._parse_line(line.strip(), line_num)
+		except FileNotFoundError:
+			raise MapParsingError(f"File not found: {self.filepath}")
 
-class Zone(BaseModel):
-    name: str
-    x: int
-    y: int
-    zone_type: ZoneType = ZoneType.NORMAL
-    color: Optional[str] = None
-    max_drones : int = Field(default=1, ge=1)
+		if not self.graph.start_hub:
+			raise MapParsingError("Map must contain a start_hub")
+		if not self.graph.end_hub:
+			raise MapParsingError("Map must contain an end_hub")
+		if self.graph.nb_drones <= 0:
+			raise MapParsingError("Map must contain valid nb_drones > 0")
 
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str) -> str:
-        if "-" in v or " " in v:
-            raise ValueError(f"Zone name {v} cannot contain dashes or spaces.")
-        return v
-    
-    @property
-    def travel_cost(self) -> int:
-        if self.zone_type == ZoneType.RESTRICTED:
-            return 2
-        return 1
-    
-    
-class Connection(BaseModel):
-    zone_name: str
-    zone_name2: str
-    max_link_capacity: int = Field(default= 1, ge=1)
-    
+	def parse_line(self, line: str, line_num: int) -> None:
+		if not line or line.startswith("#"):
+			return
+		try:
+			clean_line, metadata = MetadataParser.extract_and_parse(line)
 
-class Graph(BaseModel):
-    nb_drones : int = Field(default=0, ge=0)
-    start_hub: Optional[Zone] = None
-    end_hub: Optional[Zone] = None
-    zones = Dict[str, Zone] = None
-    connection : List[Connection] = Field(default_factory=list)
-    adj_list: Dict[str, List[Connection]] = Field(default_factory=dict)
+			if clean_line.startswith("nb_drones:"):
+				val_str = clean_line.split(":", 1)[1].strip()
+				if not val_str.isdigit() or int(val_str) <= 0:
+					raise MapParsingError("nb_drones must be a positive integer", line_num)
+				self.graph.nb_drones = val_str
 
-    def add_zone(self, zone: Zone) -> None:
-        if zone.name in self.zones:
-            raise ValueError(f"Duplicate zone name '{zone.name}' ")
-        self.zones[zone.name] = zone
-        self.adj_list[zone.name] = []
+			elif clean_line.startswith(("start_hub:", "end_hub", "hub:")):
+				self._handle_zone(clean_line, metadata, line_num)
 
-    def add_connectoion(self, conn: Connection) -> None:
-        if conn.zone1_name not in self.zones or conn.zone2_name not in self.zones:
-            raise ValueError(
-                f"Connection links undefined zone: {conn.zone1_name}"
-                f"or {conn.zone_2name}."
-            )
-        self.connections.append(conn)
-        self.adj_list[conn.zone1_name].append(conn)
-        self.adj_list[conn.zone2_name].append(conn)
+			elif clean_line.startswith("connection"):			
+				if 
+		except:
+
+def _handle_zone(clean_line: str, metadata: str, line_num: int):
+
