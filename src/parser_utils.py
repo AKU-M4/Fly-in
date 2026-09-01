@@ -12,7 +12,7 @@ class RawMetadata(BaseModel):
 class MetadataParser:
 	@staticmethod
 	def extract_and_parse(raw_text: str) -> Tuple[str, RawMetadata]:
-		match = re.search(r"\[(.*?\)]", raw_text)
+		match = re.search(r"\[(.*?)\]", raw_text)
 		meta_dict: Dict[str, str] = {}
 
 		if match:

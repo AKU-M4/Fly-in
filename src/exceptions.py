@@ -1,0 +1,3 @@
+class MapParssingError(Exception):
+    pass
+    

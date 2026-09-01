@@ -1,7 +1,7 @@
 PYTHON = python3
 
 run:
-	uv python3 -m src
+	uv run python3 -m src
 
 install:
 	uv sync
