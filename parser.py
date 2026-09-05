@@ -27,6 +27,8 @@ class MapParser:
         return self.graph
 
     def _parse_line(self, line: str, line_num: int) -> None:
+        while line == "\n":
+            continue
         if not line or line.startswith("#"):
             return
         if line_num == 1 and not line.startswith("nb_drones"):
@@ -59,8 +61,8 @@ class MapParser:
         if len(tokens) < 3:
             raise MapParsingError("Zone declaration requires <name>"
                                   "<x> <y>",line_num)
-        if int(tokens[1]) < 0 or int(tokens[2]) < 0:
-            raise MapParsingError("Position x and y most be a postivie integer", line_num)
+        # if int(tokens[1]) < 0 or int(tokens[2]) < 0:
+        #     raise MapParsingError("Position x and y most be a postivie integer", line_num)
         name, x_str, y_str = tokens[0], tokens[1], tokens[2]
 
         zone = Zone(
