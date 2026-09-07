@@ -1,7 +1,7 @@
 import re
 from typing import Dict, Optional, Tuple
 from pydantic import BaseModel, Field
-from src.models import ZoneType
+from models import ZoneType
 
 class RawMetadata(BaseModel):
 	zone: ZoneType = ZoneType.NORMAL

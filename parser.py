@@ -1,8 +1,8 @@
 from typing import Set, Tuple
 from pydantic import ValidationError
-from src.exceptions import MapParsingError
-from src.models import Zone, Graph, Connection
-from src.parser_utils import MetadataParser, RawMetadata
+from exceptions import MapParsingError
+from models import Zone, Graph, Connection
+from parser_utils import MetadataParser, RawMetadata
 
 class MapParser:
     def __init__(self, filepath: str) -> None:

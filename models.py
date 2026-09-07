@@ -1,4 +1,3 @@
-from path import Path
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 from typing import Optional, Any, Tuple, Dict, List
@@ -15,12 +14,12 @@ class Zone(BaseModel):
 	y: int
 	zone_type : ZoneType = Field(default=ZoneType.NORMAL)
 	max_drones: int = Field(default=1, ge=1)
-	color : Optional[str] = None
+	color : Optional[str] = Field(default="white")
 
 	@field_validator("name")
 	@classmethod
 	def validate_name(cls, v: str) -> str:
-		if '-' in v or ' ' in v:
+		if ' ' in v or '-' in v:
 			raise ValueError("Name most not have a space or a '-'.")
 		else:
 			return v
