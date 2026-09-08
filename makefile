@@ -6,7 +6,7 @@ install:
 	$(UV) sync
 
 run:
-	python3 main.py
+	python3 main.py "maps/medium/03_priority_puzzle.txt"
 
 debug:
 	$(UV) run python -m pdb main.py maps/map_easy.txt

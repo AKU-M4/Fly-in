@@ -19,10 +19,20 @@ class ReservationTable:
                 return conn.max_link_capacity
         return 1
 
-    def is_edge_free(self, u: str, v: str, turn: int) -> bool:
+    def is_edge_free(self, u: str, v: str, dep_t: int, cost: int) -> bool:
         cap = self.get_edge_capacity(u, v)
-        current = self.edge_traffic.get((self.get_edge_key(u, v), turn), 0)
-        return current < cap
+        key = self.get_edge_key(u, v)
+        # Check all turns the drone spends in transit
+        for t in range(dep_t, dep_t + cost):
+            if self.edge_traffic.get((key, t), 0) >= cap:
+                return False
+        return True
+
+    def book_edge(self, u: str, v: str, dep_t: int, cost: int) -> None:
+        key = self.get_edge_key(u, v)
+        for t in range(dep_t, dep_t + cost):
+            self.edge_traffic[(key, t)] = self.edge_traffic.get(
+                (key, t), 0) + 1
 
     def is_node_free(self, z_name: str, turn: int) -> bool:
         if z_name in (self.graph.start_hub.name, self.graph.end_hub.name):
@@ -36,10 +46,6 @@ class ReservationTable:
         if z_name not in (self.graph.start_hub.name, self.graph.end_hub.name):
             key = (z_name, turn)
             self.node_traffic[key] = self.node_traffic.get(key, 0) + 1
-
-    def book_edge(self, u: str, v: str, turn: int) -> None:
-        key = (self.get_edge_key(u, v), turn)
-        self.edge_traffic[key] = self.edge_traffic.get(key, 0) + 1
 
 
 class PathFinder:
@@ -106,31 +112,55 @@ class Scheduler:
         self.table = ReservationTable(graph)
         self.all_moves = []
 
-    def run(self) -> None:
+    def run(self) -> List[Tuple[int, int, str]]:
+        all_moves: List[Tuple[int, int, str]] = []
+
         for drone_id in range(1, self.graph.nb_drones + 1):
-            best_moves = []
-            best_reservations = []
-            earliest_arrival = float("inf")
+            best_arrival = float("inf")
+            best_moves: List[Tuple[int, int, str]] = []
+            best_reservations: List[Tuple[str, str, int, int]] = []
 
             for path in self.paths:
                 arrival, moves, reservations = self._simulate_path(
-                    drone_id, path)
-                if arrival < earliest_arrival:
-                    earliest_arrival = arrival
+                    drone_id, path
+                )
+                if arrival < best_arrival:
+                    best_arrival = arrival
                     best_moves = moves
                     best_reservations = reservations
 
-            for u, v, dep_t, arr_t in best_reservations:
-                self.table.book_edge(u, v, dep_t)
-                self.table.book_node(v, arr_t)
+            # Commit the reservations for the winning path
+            for curr_room, next_room, dep_t, arr_t in best_reservations:
+                cost = arr_t - dep_t
 
-            self.all_moves.extend(best_moves)
+                # Pass cost so the edge is reserved for all transit turns
+                self.table.book_edge(
+                    curr_room,
+                    next_room,
+                    dep_t,
+                    cost,
+                )
 
-        return self.all_moves
+                # Room arrival occurs on dep_t for cost=1, or dep_t+1 for cost=2
+                dest_turn = dep_t if cost == 1 else dep_t + 1
+                self.table.book_node(next_room, dest_turn)
 
-    def _simulate_path(self, drone_id: int, path: List[str]):
-        moves = []
-        reservations = []
+            all_moves.extend(best_moves)
+
+        return all_moves
+
+
+    def _simulate_path(
+            self,
+            drone_id: int,
+            path: List[str],
+        ) -> Tuple[
+            int,
+            List[Tuple[int, int, str]],
+            List[Tuple[str, str, int, int]],
+    ]:
+        moves: List[Tuple[int, int, str]] = []
+        reservations: List[Tuple[str, str, int, int]] = []
         curr_turn = 1
 
         for i in range(len(path) - 1):
@@ -140,12 +170,14 @@ class Scheduler:
             cost = self.graph.zones[next_room].travel_cost
 
             while True:
-                # checking if the edge is free
+                # Check link capacity across all turns in transit
                 edge_free = self.table.is_edge_free(
-                    curr_room, next_room, curr_turn)
-                # checking if the next room is free
-                dest_free = self.table.is_node_free(next_room,
-                                                    curr_turn + cost)
+                    curr_room, next_room, curr_turn, cost
+                )
+
+                # Normal zones arrive on curr_turn; restricted arrive on curr_turn + 1
+                dest_turn = curr_turn if cost == 1 else curr_turn + 1
+                dest_free = self.table.is_node_free(next_room, dest_turn)
 
                 if edge_free and dest_free:
                     break
@@ -153,12 +185,16 @@ class Scheduler:
 
             arrival_turn = curr_turn + cost
             reservations.append(
-                (curr_room, next_room, curr_turn, arrival_turn))
+                (curr_room, next_room, curr_turn, arrival_turn)
+            )
 
             if cost == 2:
-                moves.append((curr_turn, drone_id, f"{curr_room}-{next_room}"))
-                moves.append((arrival_turn, drone_id, next_room))
-
+                moves.append(
+                    (curr_turn, drone_id, f"{curr_room}-{next_room}")
+                )
+                moves.append(
+                    (curr_turn + 1, drone_id, next_room)
+                )
             else:
                 moves.append((curr_turn, drone_id, next_room))
 
