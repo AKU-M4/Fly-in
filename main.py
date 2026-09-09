@@ -84,24 +84,7 @@ def main() -> None:
                 turn_moves = [
                     move_str for _, move_str in sorted_tuples
                 ]
-                print(f" ".join(turn_moves))
-                if show_cap:
-                    for name, zone in graph.zones.items():
-                        used = scheduler.table.node_traffic.get((name, t), 0)
-                        if used > 0:
-                            print(
-                                f"  Zone {name}: {used}/{zone.max_drones} "
-                                "drones"
-                            )
-
-                    for (edge, turn), used in (
-                        scheduler.table.edge_traffic.items()
-                    ):
-                        if turn == t and used > 0:
-                            u, v = edge
-                            print(
-                                f"  Connection {u}-{v}: {used} capacity used"
-                            )
+                print(" ".join(turn_moves))
 
 
 if __name__ == "__main__":

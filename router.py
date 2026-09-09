@@ -1,13 +1,13 @@
 import heapq
+from typing import Dict, List, Tuple
 from models import Graph, ZoneType
-from typing import Tuple, Any, List, Dict
 
 
 class ReservationTable:
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
-        self.node_traffic = {}
-        self.edge_traffic = {}
+        self.node_traffic: Dict[Tuple[str, int], int] = {}
+        self.edge_traffic: Dict[Tuple[Tuple[str, str], int], int] = {}
 
     def get_edge_key(self, u: str, v: str) -> Tuple[str, str]:
         return (min(u, v), max(u, v))
@@ -22,7 +22,6 @@ class ReservationTable:
     def is_edge_free(self, u: str, v: str, dep_t: int, cost: int) -> bool:
         cap = self.get_edge_capacity(u, v)
         key = self.get_edge_key(u, v)
-        # Check all turns the drone spends in transit
         for t in range(dep_t, dep_t + cost):
             if self.edge_traffic.get((key, t), 0) >= cap:
                 return False
@@ -31,19 +30,32 @@ class ReservationTable:
     def book_edge(self, u: str, v: str, dep_t: int, cost: int) -> None:
         key = self.get_edge_key(u, v)
         for t in range(dep_t, dep_t + cost):
-            self.edge_traffic[(key, t)] = self.edge_traffic.get(
-                (key, t), 0) + 1
+            self.edge_traffic[(key, t)] = (
+                self.edge_traffic.get((key, t), 0) + 1
+            )
 
     def is_node_free(self, z_name: str, turn: int) -> bool:
-        if z_name in (self.graph.start_hub.name, self.graph.end_hub.name):
+        start_name = (
+            self.graph.start_hub.name if self.graph.start_hub else None
+        )
+        end_name = (
+            self.graph.end_hub.name if self.graph.end_hub else None
+        )
+        if z_name in (start_name, end_name):
             return True
 
         limit = self.graph.zones[z_name].max_drones
         current = self.node_traffic.get((z_name, turn), 0)
-        return limit > current
+        return bool(limit > current)
 
     def book_node(self, z_name: str, turn: int) -> None:
-        if z_name not in (self.graph.start_hub.name, self.graph.end_hub.name):
+        start_name = (
+            self.graph.start_hub.name if self.graph.start_hub else None
+        )
+        end_name = (
+            self.graph.end_hub.name if self.graph.end_hub else None
+        )
+        if z_name not in (start_name, end_name):
             key = (z_name, turn)
             self.node_traffic[key] = self.node_traffic.get(key, 0) + 1
 
@@ -52,11 +64,14 @@ class PathFinder:
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
 
-    def get_k_paths(self, k: int = 5) -> List[list[str]]:
+    def get_k_paths(self, k: int = 5) -> List[List[str]]:
+        if not self.graph.start_hub or not self.graph.end_hub:
+            return []
+
         start = self.graph.start_hub.name
         end = self.graph.end_hub.name
-        paths = []
-        edge_penalties = {}
+        paths: List[List[str]] = []
+        edge_penalties: Dict[Tuple[str, str], int] = {}
 
         for _ in range(k):
             path = self._djikstra(start, end, edge_penalties)
@@ -65,14 +80,22 @@ class PathFinder:
             paths.append(path)
 
             for i in range(len(path) - 1):
-                pair = (min(path[i], path[i + 1]), max(path[i], path[i + 1]))
+                pair = (
+                    min(path[i], path[i + 1]),
+                    max(path[i], path[i + 1]),
+                )
                 edge_penalties[pair] = edge_penalties.get(pair, 0) + 5
 
         return paths
 
-    def _djikstra(self, start: str, end: str, penalties: Dict) -> List[str]:
-        pq = [(0, start, [start])]
-        best_costs = {start: 0}
+    def _djikstra(
+        self,
+        start: str,
+        end: str,
+        penalties: Dict[Tuple[str, str], int],
+    ) -> List[str]:
+        pq: List[Tuple[int, str, List[str]]] = [(0, start, [start])]
+        best_costs: Dict[str, float] = {start: 0.0}
 
         while pq:
             cost, current, path = heapq.heappop(pq)
@@ -86,7 +109,7 @@ class PathFinder:
             for conn in self.graph.adj_list.get(current, []):
                 if conn.zone1_name == current:
                     neighbor = conn.zone2_name
-                elif conn.zone1_name != current:
+                else:
                     neighbor = conn.zone1_name
 
                 neighbor_zone = self.graph.zones[neighbor]
@@ -99,18 +122,19 @@ class PathFinder:
                 total_cost = cost + step_cost + penalties.get(pair, 0)
 
                 if total_cost < best_costs.get(neighbor, float("inf")):
-                    best_costs[neighbor] = total_cost
+                    best_costs[neighbor] = float(total_cost)
                     heapq.heappush(
-                        pq, (total_cost, neighbor, path + [neighbor]))
+                        pq, (total_cost, neighbor, path + [neighbor])
+                    )
         return []
 
 
 class Scheduler:
-    def __init__(self, graph: Graph, paths: List[list]) -> None:
+    def __init__(self, graph: Graph, paths: List[List[str]]) -> None:
         self.graph = graph
         self.paths = paths
         self.table = ReservationTable(graph)
-        self.all_moves = []
+        self.all_moves: List[Tuple[int, int, str]] = []
 
     def run(self) -> List[Tuple[int, int, str]]:
         all_moves: List[Tuple[int, int, str]] = []
@@ -125,39 +149,29 @@ class Scheduler:
                     drone_id, path
                 )
                 if arrival < best_arrival:
-                    best_arrival = arrival
+                    best_arrival = float(arrival)
                     best_moves = moves
                     best_reservations = reservations
 
-            # Commit the reservations for the winning path
             for curr_room, next_room, dep_t, arr_t in best_reservations:
                 cost = arr_t - dep_t
-
-                # Pass cost so the edge is reserved for all transit turns
-                self.table.book_edge(
-                    curr_room,
-                    next_room,
-                    dep_t,
-                    cost,
-                )
-
-                # Room arrival occurs on dep_t for cost=1, or dep_t+1 for cost=2
+                self.table.book_edge(curr_room, next_room, dep_t, cost)
                 dest_turn = dep_t if cost == 1 else dep_t + 1
                 self.table.book_node(next_room, dest_turn)
 
             all_moves.extend(best_moves)
 
+        self.all_moves = all_moves
         return all_moves
 
-
     def _simulate_path(
-            self,
-            drone_id: int,
-            path: List[str],
-        ) -> Tuple[
-            int,
-            List[Tuple[int, int, str]],
-            List[Tuple[str, str, int, int]],
+        self,
+        drone_id: int,
+        path: List[str],
+    ) -> Tuple[
+        int,
+        List[Tuple[int, int, str]],
+        List[Tuple[str, str, int, int]],
     ]:
         moves: List[Tuple[int, int, str]] = []
         reservations: List[Tuple[str, str, int, int]] = []
@@ -170,12 +184,9 @@ class Scheduler:
             cost = self.graph.zones[next_room].travel_cost
 
             while True:
-                # Check link capacity across all turns in transit
                 edge_free = self.table.is_edge_free(
                     curr_room, next_room, curr_turn, cost
                 )
-
-                # Normal zones arrive on curr_turn; restricted arrive on curr_turn + 1
                 dest_turn = curr_turn if cost == 1 else curr_turn + 1
                 dest_free = self.table.is_node_free(next_room, dest_turn)
 
