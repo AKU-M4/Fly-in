@@ -25,12 +25,9 @@ ANSI_COLORS: Dict[str, str] = {
 
 
 def main() -> None:
-    show_cap = "--capacity-info" in sys.argv
-    if show_cap:
-        sys.argv.remove("--capacity-info")
 
     if len(sys.argv) != 2:
-        print("Usage: python3 -m src <map_file>", file=sys.stderr)
+        print("Usage: python3 -m main.py <map_file>", file=sys.stderr)
         sys.exit(1)
 
     map_path = Path(sys.argv[1])
